@@ -17,15 +17,24 @@ cd C:\Users\SAMSUNG\Desktop\project_3
 
 프롬프트에 `(.venv)`가 붙으면 준비 완료.
 
-## 작업 저장할 때
+## 작업 중단할 때 (저장 절차)
 
 ```powershell
-git add .
-git commit -m "무엇을 했는지 한 줄"
-git push
+git status              # 1. 무엇이 변했는지 확인
+git add .               # 2. 커밋 대상에 올리기
+git status              # 3. .env 등이 섞이지 않았는지 재확인 ★
+git commit -m "메시지"  # 4. 로컬에 기록
+git push                # 5. GitHub에 업로드
 ```
 
-커밋 메시지 접두어: `feat:` 기능 / `fix:` 수정 / `docs:` 문서 / `chore:` 잡무
+★ 3번을 생략하지 말 것. `.env`, `.venv/`, `data/source/` 가 목록에 보이면 멈추고 원인 확인.
+
+### 커밋 메시지 접두어
+`feat:` 기능 추가 / `fix:` 오류 수정 / `docs:` 문서 / `chore:` 설정·잡무
+
+### 중단 시 함께 할 것
+- `docs/06_worklog.md` 에 한 일 / 막힌 것 / 다음 할 것 3줄 기록
+- 선택이 있었다면 `docs/02_decision_log.md` 에 추가
 
 ## 자주 쓰는 확인
 

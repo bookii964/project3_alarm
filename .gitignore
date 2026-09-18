@@ -2,8 +2,13 @@
 .venv/
 __pycache__/
 *.pyc
-data/
+
+# 데이터: 내용물을 막되 sample 폴더는 예외
+data/*
 !data/sample/
+data/sample/*
 !data/sample/*.csv
+!data/sample/*.md
+
 state/replay_state.json
 .streamlit/secrets.toml
