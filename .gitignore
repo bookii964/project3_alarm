@@ -3,5 +3,7 @@
 __pycache__/
 *.pyc
 data/
+!data/sample/
+!data/sample/*.csv
 state/replay_state.json
 .streamlit/secrets.toml
