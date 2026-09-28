@@ -19,4 +19,7 @@ for label, key in [("운영(main)", "DATABASE_URL"), ("개발(dev)", "DEV_DATABA
             version = conn.execute(text("SELECT version()")).scalar()
         print(f"{label:12s} 접속 성공 — {version.split(',')[0]}")
     except Exception as e:
-        print(f"{label:12s} 실패 — {type(e).__name__}: {str(e)[:100]}")
+        msg = str(e)
+        if "://" in msg and "@" in msg:
+            msg = f"(접속 정보가 포함된 메시지라 생략) {type(e).__name__}"
+        print(f"{label:12s} 실패 — {msg[:400]}")
