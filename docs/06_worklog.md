@@ -77,7 +77,7 @@
    - orders / clickstream / support_tickets → dated / undated 분리
    - product_catalog / crm_customers / crm_customer_devices → 마스터
 
-   ## Day 2 완료 — Parquet 추출 (2026-09-20)
+   ## Day 2 완료 — Parquet 추출 (2026-09-28)
 
 ### 한 일
 - extract_source.py 수정 및 재실행 — 재생 구간(92일) 필터 적용
@@ -103,3 +103,17 @@
 1. replay.py 작성 — 논리적 날짜 관리, dated 추출, undated 비율 배분
 2. state/replay_state.json 설계 (cycle, day_index)
 3. load.py — 멱등 적재 + FK 순서 보장
+
+## Day 3 | Neon dev 브랜치 재생성
+- 증상: dev 접속 시 password authentication failed. main은 정상
+- 원인: dev 브랜치가 삭제되어 .env의 엔드포인트가 존재하지 않는 곳을 가리킴
+  (ep-blue-sea-... → 실제로는 없는 브랜치)
+- 조치: dev 브랜치 재생성 후 .env 갱신
+- 함께 발견: 복제된 dev에 clickstream FK 2개가 누락(전체 6 → 4)
+  → raw 테이블 DROP 후 11_raw_tables.sql 재적용으로 복구
+- 배운 것:
+  - Neon 브랜치는 생성 시마다 엔드포인트와 비밀번호가 새로 발급됨.
+    만든 즉시 .env 갱신할 것
+  - CREATE TABLE IF NOT EXISTS 는 테이블이 있으면 통째로 건너뛰므로,
+    제약조건이 누락된 상태를 고치지 못한다. DROP 후 재생성이 필요
+  - 스키마 검증(check_neon.py)을 적재 전에 돌리는 습관이 이 문제를 잡았다

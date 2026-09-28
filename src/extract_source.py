@@ -33,6 +33,33 @@ EVENTS = [
     ("clickstream", "event_time"),
 ]
 
+# UUID 컬럼 목록.
+# Parquet에는 UUID 타입이 없어 그대로 저장하면 16바이트 이진값이 되고,
+# 다시 읽었을 때 b'\xfa\x10...' 형태가 되어 적재 시 타입 오류가 난다.
+# 문자열로 바꿔 내보내면 Postgres가 적재 시 다시 uuid로 해석한다.
+UUID_COLS = {
+    "product_catalog": [],
+    "crm_customers": ["customer_id"],
+    "crm_customer_devices": ["customer_id", "device_id"],
+    "orders": ["order_id", "customer_id"],
+    "support_tickets": ["ticket_id", "customer_id"],
+    "clickstream": ["event_id", "customer_id", "session_id",
+                    "device_id", "ingest_run_id"],
+}
+
+
+def to_uuid_str(df: pd.DataFrame, table: str) -> pd.DataFrame:
+    """UUID 컬럼을 문자열로 변환한다.
+
+    astype("string")은 NULL을 NULL로 유지한다.
+    astype(str)을 쓰면 NULL이 "None"이라는 글자가 되므로 쓰지 않는다.
+    (clickstream.customer_id는 30%가 NULL이라 특히 중요)
+    """
+    for col in UUID_COLS.get(table, []):
+        if col in df.columns:
+            df[col] = df[col].astype("string")
+    return df
+
 
 def save(df: pd.DataFrame, name: str) -> None:
     path = OUT / f"{name}.parquet"
@@ -52,12 +79,14 @@ def main() -> None:
             f"SELECT * FROM portfolio.{table} "
             f"WHERE {col}::date BETWEEN '{REPLAY_START}' AND '{REPLAY_END}' "
             f"ORDER BY {col}", engine)
+        dated = to_uuid_str(dated, table)
         save(dated, f"{table}_dated")
 
         # 날짜가 없는 행은 구간 개념이 없으므로 전량 보관.
         # 재생기가 원본 결측률에 맞춰 매 배치에 배분한다
         undated = pd.read_sql(
             f"SELECT * FROM portfolio.{table} WHERE {col} IS NULL", engine)
+        undated = to_uuid_str(undated, table)
         save(undated, f"{table}_undated")
 
     print("\n[증분 마스터]")
@@ -69,19 +98,23 @@ def main() -> None:
         f"WHERE signup_date <  '{REPLAY_START}' "
         f"   OR signup_date >  '{REPLAY_END}' "
         f"ORDER BY signup_date", engine)
+    initial = to_uuid_str(initial, "crm_customers")
     save(initial, "crm_customers_initial")
 
     incremental = pd.read_sql(
         f"SELECT * FROM portfolio.crm_customers "
         f"WHERE signup_date BETWEEN '{REPLAY_START}' AND '{REPLAY_END}' "
         f"ORDER BY signup_date", engine)
+    incremental = to_uuid_str(incremental, "crm_customers")
     save(incremental, "crm_customers_dated")
 
     # 기기는 날짜 컬럼이 없다. 고객 적재 시 customer_id로 선별해 함께 넣는다
     devices = pd.read_sql("SELECT * FROM portfolio.crm_customer_devices", engine)
+    devices = to_uuid_str(devices, "crm_customer_devices")
     save(devices, "crm_customer_devices")
 
     print("\n[고정 마스터]")
+    # product_catalog는 uuid 컬럼이 없어 변환 불필요
     products = pd.read_sql("SELECT * FROM portfolio.product_catalog", engine)
     save(products, "product_catalog")
 
