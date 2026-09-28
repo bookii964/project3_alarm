@@ -1,13 +1,17 @@
 """
 SQL 파일을 지정한 대상 DB에서 실행한다.
 
-사용:
+사용(powershell):
     python src/run_sql.py dev  sql/ddl/10_schemas.sql
     python src/run_sql.py dev  sql/ddl/10_schemas.sql sql/ddl/12_quarantine.sql
     python src/run_sql.py main sql/ddl/10_schemas.sql
+  
+"""
+r"""
+SQL 파일을 지정한 대상 DB에서 실행한다.
 
-powershell에서 아래 실행
-python src\run_sql.py dev sql\ddl\10_schemas.sql    
+사용(powershell):
+    python src/run_sql.py dev  sql/ddl/10_schemas.sql
 """
 import os
 import sys

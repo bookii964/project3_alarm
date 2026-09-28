@@ -44,3 +44,62 @@
 - 조치: 실제 DB 조회 결과를 기준으로 삼고, 새 DDL 작성 시
   정의서에 기술된 규칙 중 누락된 것은 검증 룰(validate.py)로 옮긴다
 - 배운 것: 문서에 적힌 수치는 DB에 직접 조회해 확인해야 한다
+
+## Day 2 완료 (2026-09-20)
+
+### 한 일
+- Neon dev/main 양쪽에 스키마 적용 완료
+  - raw 6테이블 (batch_date, ingested_at 추가), quarantine 1테이블,
+    mart 3테이블 (dq_daily / daily_kpi / batch_log)
+  - 검증: PK 7, FK 6, CHECK 25 — dev/main 일치
+- run_sql.py / check_neon.py 작성
+  - psql 대신 파이썬으로 DDL 실행. GitHub Actions에서 동일 코드 재사용 목적
+  - DDL 전체를 한 트랜잭션으로 묶어 중간 실패 시 롤백되도록 처리
+
+### 배운 것 / 정리
+- **Parquet(파케이)**: 열 단위로 저장하는 압축 표 형식. CSV 대비 5~10배 작고,
+  필요한 열만 읽을 수 있으며, **타입이 파일에 기록되어 보존됨**
+  (CSV는 모든 값이 문자열이라 uuid·날짜·앞자리 0이 깨질 수 있음).
+  사람이 직접 열어볼 수 없어 샘플은 CSV로 별도 유지.
+  사용법은 df.to_parquet() / pd.read_parquet() 로 CSV와 동일
+- **SyntaxWarning `invalid escape sequence '\d'`**: 문자열 안의
+  윈도우 경로에서 `\d` 를 파이썬이 특수문자로 해석하려다 발생.
+  docstring 앞에 `r` 을 붙여 raw string 으로 처리
+
+### 막힌 것
+- psql 명령에 예시 주소를 그대로 입력 → 파이썬 실행 방식으로 전환
+- test_conn.py 들여쓰기 오류 (탭/공백 혼용). VS Code 설정을 Spaces:4 로 고정
+
+### 다음 할 일
+1. run_sql.py docstring 에 r 접두어 추가
+2. 마스터 테이블 공급 방식 결정 (A: 첫날 전량 / C: 초기+증분)
+3. Parquet 추출 스크립트 작성
+   - orders / clickstream / support_tickets → dated / undated 분리
+   - product_catalog / crm_customers / crm_customer_devices → 마스터
+
+   ## Day 2 완료 — Parquet 추출 (2026-09-20)
+
+### 한 일
+- extract_source.py 수정 및 재실행 — 재생 구간(92일) 필터 적용
+  - orders_dated 210,000 → 26,356행으로 정정
+  - crm_customers를 initial(47,216) / dated(984)로 분할
+  - 구간 이후 가입 고객도 initial에 포함하도록 방어 처리 (현재 0명)
+- 총 42.3 MB. DB 적재 시 인덱스 포함 약 180MB로 추정
+
+### 막힌 것
+- 코드 수정 시 함수 바깥에 중복 블록을 추가해 구간 필터가 무시됨
+  (main() 안의 같은 이름 변수가 우선하여 에러 없이 기존 동작 유지)
+  → 파일 전체 교체로 해결. 부분 수정 시 어느 함수 안인지 확인할 것
+
+### 비용 검토
+- 현재 구성 전부 무료: Neon Free(0.5GB/100CU-h), GitHub Actions(Public),
+  Streamlit Community, Slack Free
+- 예상 사용량: 용량 180MB(36%), CU-hour 월 5시간(5%)
+- 리스크: 순환 재생 2회차부터 용량 누적 → raw 90일 보존 정책으로 대응
+- 리스크: GitHub Actions는 레포 60일 무활동 시 예약 자동 비활성화
+  → 월 1회 자동 커밋 단계 추가 예정
+
+### 다음 할 일
+1. replay.py 작성 — 논리적 날짜 관리, dated 추출, undated 비율 배분
+2. state/replay_state.json 설계 (cycle, day_index)
+3. load.py — 멱등 적재 + FK 순서 보장
