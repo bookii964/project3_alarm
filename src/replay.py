@@ -58,23 +58,24 @@ def resolve_day(batch_date: date) -> tuple[int, int, date]:
     return cycle + 1, day_index, REPLAY_START + timedelta(days=day_index)
 
 
-def pick_undated(pool: pd.DataFrame, day_index: int, n_needed: int) -> pd.DataFrame:
+def pick_undated(pool: pd.DataFrame, day_index: int, n_needed: int,
+                 offset: int) -> pd.DataFrame:
     """undated 풀에서 n_needed 행을 꺼낸다.
 
-    풀 전체를 고정 시드로 한 번 섞은 뒤 day_index 위치부터 순차 소비한다.
-    조각 간 편향이 없고, 같은 (day_index, n_needed) 조합은 항상 같은 행을
-    돌려주므로 재현 가능하다. 끝에 도달하면 앞에서 이어 붙인다.
+    풀 전체를 고정 시드로 한 번 섞은 뒤 offset 위치부터 순차 소비한다.
+    offset 은 앞선 날들이 소비한 누적량이므로 날짜 간 중복이 없다.
+    (day_index * n_needed 로 계산하면 n_needed 가 날마다 달라 구간이 겹친다)
+    끝에 도달하면 앞에서 이어 붙인다.
     """
     if pool.empty or n_needed <= 0:
         return pool.iloc[0:0]
 
     shuffled = pool.sample(frac=1, random_state=SHUFFLE_SEED).reset_index(drop=True)
-    start = (day_index * n_needed) % len(shuffled)
+    start = offset % len(shuffled)
     end = start + n_needed
 
     if end <= len(shuffled):
         return shuffled.iloc[start:end].copy()
-    # 풀 끝을 넘으면 앞부분을 이어 붙인다
     return pd.concat(
         [shuffled.iloc[start:], shuffled.iloc[: end - len(shuffled)]],
         ignore_index=True,
@@ -102,15 +103,22 @@ def main() -> None:
     # --- 이벤트 테이블 ---
     for table, col in EVENTS:
         dated = pd.read_parquet(SRC / f"{table}_dated.parquet")
-        mask = pd.to_datetime(dated[col]).dt.date == logical
-        today_rows = dated[mask]
+        dated_dates = pd.to_datetime(dated[col]).dt.date
+        today_rows = dated[dated_dates == logical]
 
-        # 원본 결측률 r 을 유지하려면: n_null = n_dated * r / (1 - r)
         rate = NULL_RATES[table]
         n_null = round(len(today_rows) * rate / (1 - rate))
 
+        # 앞선 날들이 소비한 누적량을 구해 시작 위치로 삼는다.
+        # 각 날짜의 dated 건수로부터 그날의 n_null 을 되계산한다.
+        offset = 0
+        for d in range(day_index):
+            prev = REPLAY_START + timedelta(days=d)
+            n_prev = int((dated_dates == prev).sum())
+            offset += round(n_prev * rate / (1 - rate))
+
         pool = pd.read_parquet(SRC / f"{table}_undated.parquet")
-        today_null = pick_undated(pool, day_index, n_null)
+        today_null = pick_undated(pool, day_index, n_null, offset)
 
         df = pd.concat([today_rows, today_null], ignore_index=True)
         df["batch_date"] = batch_date

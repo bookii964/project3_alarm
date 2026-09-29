@@ -21,8 +21,8 @@ import argparse
 import io
 import os
 import time
-from datetime import date
 from pathlib import Path
+from datetime import date, timedelta
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -64,6 +64,25 @@ def fix_int_cols(df: pd.DataFrame, table: str) -> pd.DataFrame:
             df[col] = df[col].astype("Int64")
     return df
 
+def filter_existing(conn, df: pd.DataFrame, table: str) -> pd.DataFrame:
+    """이미 DB에 있는 마스터 행을 제외한다.
+
+    마스터는 일별 삭제 대상이 아니므로, 같은 날짜를 재실행하면
+    PK 중복이 난다. 미리 걸러 멱등성을 확보한다.
+    """
+    keys = {"crm_customers": ["customer_id"],
+            "crm_customer_devices": ["customer_id", "device_id"]}[table]
+
+    cols = ", ".join(keys)
+    existing = pd.read_sql(f"SELECT {cols} FROM raw.{table}", conn)
+    if existing.empty:
+        return df
+
+    # 복합키는 튜플로 비교
+    existing_set = set(map(tuple, existing[keys].astype(str).values))
+    mask = df[keys].astype(str).apply(lambda r: tuple(r) in existing_set, axis=1)
+    return df[~mask]
+
 def copy_df(conn, df: pd.DataFrame, table: str) -> int:
     """COPY로 대량 적재한다."""
     if df.empty:
@@ -95,20 +114,24 @@ def row_count(engine, table: str) -> int:
 def initial_load(engine, batch_date: date) -> None:
     """0일차 적재: 상품 전량 + 구간 밖 가입 고객 + 그들의 기기.
 
-    테이블별로 트랜잭션을 나눠 부분 재시도가 가능하게 한다.
-    이미 들어간 테이블은 건너뛴다.
+    batch_date 를 하루 앞당겨 기록한다. 일별 적재가
+    DELETE FROM ... WHERE batch_date = <오늘> 을 실행하므로,
+    같은 날짜를 쓰면 초기 적재분이 통째로 삭제되어 FK 가 깨진다.
+    의미상으로도 초기 적재는 "재생 시작 이전의 상태"에 해당한다.
     """
+    init_date = batch_date - timedelta(days=1)
+
     products = pd.read_parquet(SRC / "product_catalog.parquet")
-    products["batch_date"] = batch_date
+    products["batch_date"] = init_date
 
     customers = pd.read_parquet(SRC / "crm_customers_initial.parquet")
-    customers["batch_date"] = batch_date
+    customers["batch_date"] = init_date
 
     devices = pd.read_parquet(SRC / "crm_customer_devices.parquet")
     devices = devices[devices["customer_id"].isin(customers["customer_id"])].copy()
-    devices["batch_date"] = batch_date
+    devices["batch_date"] = init_date
 
-    print("[초기 적재]")
+    print(f"[초기 적재]  batch_date={init_date}")
     for table, df in [("product_catalog", products),
                       ("crm_customers", customers),
                       ("crm_customer_devices", devices)]:
@@ -124,26 +147,37 @@ def initial_load(engine, batch_date: date) -> None:
     print()
 
 
+# 일별 삭제 대상. 마스터(crm_customers, crm_customer_devices)는 제외한다.
+# 한 번 들어온 고객은 이후 배치의 이벤트가 계속 참조하므로,
+# 재실행 시 지우면 다른 날짜의 FK 가 깨진다.
+DELETE_ORDER = ["clickstream", "support_tickets", "orders"]
+
+
 def daily_load(engine, batch_date: date) -> dict[str, int]:
     """일별 적재. 트랜잭션 하나로 묶어 중간 실패 시 전부 롤백한다."""
     counts = {}
 
     with engine.begin() as conn:
-        # 삭제는 FK 역순 (참조하는 쪽 먼저)
-        for table in reversed(LOAD_ORDER):
+        # 이벤트만 삭제한다 (FK 역순). 마스터는 누적 보존
+        for table in DELETE_ORDER:
             conn.execute(
                 text(f"DELETE FROM raw.{table} WHERE batch_date = :d"),
                 {"d": batch_date})
 
-        # 삽입은 FK 정순
         for table in LOAD_ORDER:
-            path = BATCH / f"{table}.parquet"
+            path = BATCH / "clean" / f"{table}.parquet"
             if not path.exists():
                 print(f"  {table:22s} 파일 없음 — 건너뜀")
                 counts[table] = 0
                 continue
 
             df = pd.read_parquet(path)
+
+            # 마스터는 삭제하지 않으므로 이미 있는 행을 걸러낸다.
+            # 재실행 시 PK 중복을 피하면서 멱등성을 유지한다.
+            if table in ("crm_customers", "crm_customer_devices"):
+                df = filter_existing(conn, df, table)
+
             t0 = time.time()
             n = copy_df(conn, df, table)
             counts[table] = n
@@ -153,9 +187,12 @@ def daily_load(engine, batch_date: date) -> dict[str, int]:
 
 
 def main() -> None:
+    print(f"[실행 파일] {__file__}")
     parser = argparse.ArgumentParser()
     parser.add_argument("target", choices=["dev", "main"])
     parser.add_argument("--date", type=date.fromisoformat, default=date.today())
+    parser.add_argument("--init-only", action="store_true",
+                        help="초기 적재만 수행한다. 검증보다 먼저 실행할 것")
     args = parser.parse_args()
 
     url = os.environ.get(TARGETS[args.target])
@@ -167,7 +204,14 @@ def main() -> None:
     print(f"대상: {args.target}   배치 날짜: {batch_date}\n")
 
     started = time.time()
+
+    # 초기 적재(마스터)는 검증의 참조 대상이 되므로 반드시 먼저 끝나야 한다.
+    # validate.py 가 DB를 조회할 때 비어 있으면 모든 행이 FK 위반으로 격리된다.
     initial_load(engine, batch_date)
+
+    if args.init_only:
+        print(f"초기 적재만 수행  {time.time() - started:.1f}초")
+        return
 
     print("[일별 적재]")
     counts = daily_load(engine, batch_date)

@@ -1,0 +1,50 @@
+# 품질 검증 기준선
+#
+# null_rate: 정의서의 "분석 가능 모수" 표에서 가져온 원본 결측률.
+#   운영이 28일 이상 쌓이면 롤링 평균으로 전환 예정
+# row_count: 재생 구간의 일평균 적재량
+# tolerance: 기준선 대비 허용 범위 (절대값 %p)
+
+orders:
+  row_count: 411
+  null_rate:
+    order_amount: 0.172
+    order_date: 0.300
+    quantity: 0.150
+  categories:
+    payment_method: [card, cash, upi, wallet]
+    status: [success, failed, refunded]
+
+support_tickets:
+  row_count: 40
+  null_rate:
+    ticket_created: 0.090
+  categories:
+    issue_type: [payment, delay, refund, product]
+    sentiment: [positive, neutral, negative]
+
+clickstream:
+  row_count: 5400
+  null_rate:
+    event_time: 0.120
+    product_id: 0.262
+    customer_id: 0.301
+  categories:
+    event_type: [page_view, search, add_to_cart, login]
+    page_type: [product_detail, search, category, cart, home, other]
+
+crm_customers:
+  row_count: 11
+  null_rate: {}
+  categories:
+    gender: [M, F, O]
+    source: [referral, web, app]
+
+crm_customer_devices:
+  row_count: 11
+  null_rate: {}
+  categories: {}
+
+tolerance:
+  null_rate_pp: 0.10      # 기준선 대비 ±10%p
+  row_count_ratio: 0.50   # 기준선 대비 ±50%

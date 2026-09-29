@@ -117,3 +117,49 @@
   - CREATE TABLE IF NOT EXISTS 는 테이블이 있으면 통째로 건너뛰므로,
     제약조건이 누락된 상태를 고치지 못한다. DROP 후 재생성이 필요
   - 스키마 검증(check_neon.py)을 적재 전에 돌리는 습관이 이 문제를 잡았다
+
+  ## Day 3 (2026-09-28)
+
+### 한 일
+- extract_source.py — UUID를 문자열로 변환 (Parquet에 UUID 타입 없음)
+- replay.py — 92일 순환 재생, ANCHOR=2026-09-28 확정
+  - 논리 날짜 2025-09-02 부터 시작, 결측률 30/9/12% 유지 확인
+- load.py — COPY 방식 적재기
+  - 초기 적재 47,216행 3.3초 (INSERT 방식 대비 대폭 단축)
+  - FK 순서 보장, batch_date 기준 DELETE→INSERT 멱등 처리
+- 점검 스크립트 추가: check_rows.py, run_sql.py, check_neon.py
+- Neon dev 브랜치 재생성 및 raw 테이블 재구축
+
+### 막힌 것과 해결
+1. **UUID가 바이트로 저장됨**
+   - Parquet에 UUID 타입이 없어 b'\xfa\x10...' 형태로 저장 → 적재 시 타입 오류
+   - astype("string")으로 해결. astype(str)은 NULL을 "None" 문자열로
+     바꾸므로 사용 불가 (clickstream.customer_id 30% NULL)
+2. **INSERT 방식이 너무 느리고 에러가 거대함**
+   - 47,216행 = 파라미터 120만 개. 실패 시 에러 메시지가 수십만 자가 되어
+     PowerShell 콘솔까지 깨짐(PSReadLine 예외)
+   - COPY 방식으로 전환 + 에러 출력 600자 제한
+3. **dev 브랜치 삭제로 접속 실패**
+   - .env가 존재하지 않는 엔드포인트를 가리킴 → 브랜치 재생성 후 갱신
+4. **clickstream FK 2개 누락**
+   - CREATE TABLE IF NOT EXISTS 는 테이블이 있으면 통째로 건너뛰므로
+     제약 누락을 고치지 못함 → 09_drop_raw.sql 추가해 DROP 후 재생성
+5. **quantity 컬럼이 "4.0"으로 적재 거부**
+   - pandas는 NULL이 있는 정수 컬럼을 float로 승격 (orders.quantity 15% NULL)
+   - astype("Int64") (nullable 정수)로 해결
+   - 주의: age_at_signup, resolution_time_hours 는 numeric이라 소수가 정상
+
+### 현재 상태
+- dev/main 스키마 동일: CHECK 25, PK 10, FK 6
+- dev 초기 적재 완료 (product 500 / customers 47,216 / devices 50,798)
+- orders 적재에서 FK 위반으로 중단 — 가입 전 주문 268건 때문. 의도된 동작
+
+### 다음 할 일
+1. validate.py 작성
+   - 참조 확인 방식: DB에서 id 목록만 조회 + 이번 배치 신규 고객 합산
+   - 1차 룰 9개: X01~X04(FK), C03(PK중복), C05(0건), D01(NULL률),
+     D02(신규 범주값), D05(적재량 급변)
+   - 통과분 → data/batch/clean/, 위반분 → quarantine.rejected_rows,
+     검사 결과 → mart.dq_daily
+2. load.py 가 clean/ 을 읽도록 경로 변경
+3. 파이프라인 순서: replay → validate → load

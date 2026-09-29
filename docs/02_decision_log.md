@@ -175,3 +175,24 @@
 - astype(str)이 아닌 astype("string")을 쓴 이유: 전자는 NULL을
   "None" 문자열로 바꿔버림. clickstream.customer_id는 30%가 NULL이라 치명적
 - 용량: 42.3 → 77.6 MB (UUID 16바이트 → 36글자). DB 용량은 불변(uuid는 16바이트 고정)
+
+## Day 3 | COPY 방식 적재 채택
+- 문제: to_sql(method="multi")는 행마다 파라미터를 생성.
+  47,216행이면 파라미터 120만 개로 느리고, 실패 시 에러가 수십만 자
+- 선택: PostgreSQL COPY (CSV 스트림 전송)
+- 결과: 47,216행 적재가 3.3초
+- 결측 표기: na_rep="\\N" + WITH (NULL '\\N')
+
+## Day 3 | Parquet의 타입 손실 대응
+- UUID: Parquet에 타입이 없어 바이트로 저장 → astype("string")
+- 정수: pandas가 NULL 포함 정수 컬럼을 float로 승격 → astype("Int64")
+- 원칙: Parquet은 타입을 보존하지만, pandas가 표현할 수 없는 타입
+  (UUID, nullable int)은 경유하면서 변형된다. 적재 직전에 복원할 것
+
+## Day 3 | 참조 무결성 검사 방식 (B+C)
+- 방식: DB에서 id 컬럼만 조회 + 이번 배치의 신규 고객을 합산해 대조
+- 이유:
+  - 오늘 가입한 고객의 오늘 주문은 유효해야 하므로 배치 내 신규분 포함 필수
+  - 전체 행이 아닌 id 컬럼만 가져오면 4만 행도 1MB 수준으로 부담 없음
+- 대안이었던 "DB 전체 조회"는 네트워크 비용이 크고,
+  "배치만 확인"은 기존 고객을 놓쳐 오탐이 발생

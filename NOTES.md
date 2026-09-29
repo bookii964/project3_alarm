@@ -92,3 +92,32 @@ Git이 제외된 폴더는 아예 들여다보지 않기 때문.
 - 무료 플랜: 브랜치 10개까지. 브랜치는 데이터를 복사하지 않고
   변경분만 저장하므로 추가 용량 부담이 거의 없다
 - 접속 확인: `python src/test_conn.py`
+
+## 개발 중 초기화
+```powershell
+python src/run_sql.py dev sql/maintenance/99_truncate_all.sql
+```
+되돌릴 수 없으니 대상이 dev 인지 반드시 확인할 것.
+
+## 코드 붙여넣은 뒤 확인
+```powershell
+python -c "import ast,pathlib; ast.parse(pathlib.Path('src/파일명.py').read_text(encoding='utf-8')); print('문법 OK')"
+```
+
+IndentationError 가 나는데 눈으로는 맞아 보이면 탭/공백 혼용이다.
+VS Code: Ctrl+Shift+P → Convert Indentation to Spaces
+
+## 파이썬 실행 시 -B 옵션
+
+```powershell
+python -B src/load.py dev
+```
+
+`-B` 는 컴파일 캐시(__pycache__)를 만들지도 읽지도 않는다.
+파일을 통째로 덮어썼는데 수정 내용이 반영되지 않고 예전 오류가
+그대로 나오면 캐시 문제이므로, 이 프로젝트에서는 항상 -B 를 붙인다.
+
+캐시 수동 삭제:
+```powershell
+Get-ChildItem -Path . -Include __pycache__ -Recurse -Force -Directory | Remove-Item -Recurse -Force
+```

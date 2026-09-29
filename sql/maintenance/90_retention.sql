@@ -21,10 +21,8 @@ DELETE FROM raw.support_tickets
 DELETE FROM raw.orders
  WHERE batch_date < CURRENT_DATE - INTERVAL '90 days';
 
-DELETE FROM raw.crm_customer_devices
- WHERE batch_date < CURRENT_DATE - INTERVAL '90 days';
-
--- crm_customers / product_catalog 는 마스터라 삭제하지 않는다.
--- 이벤트가 참조하고 있고, 초기 적재분은 재적재 경로가 없기 때문.
+-- crm_customers / crm_customer_devices / product_catalog 는 마스터라 삭제하지 않는다.
+-- 이벤트가 참조하고 있고, 초기 적재분(batch_date = 재생시작일-1)은
+-- 재적재 경로가 없어 지우면 복구할 수 없다.
 
 COMMIT;
