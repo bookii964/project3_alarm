@@ -120,4 +120,23 @@ python -B src/load.py dev
 캐시 수동 삭제:
 ```powershell
 Get-ChildItem -Path . -Include __pycache__ -Recurse -Force -Directory | Remove-Item -Recurse -Force
+
+## 작업 시작할 때
+
+```powershell
+cd C:\Users\SAMSUNG\Desktop\project\project_3
+.\.venv\Scripts\Activate.ps1
+```
+
+VS Code 내장 터미널을 쓰면 cd 가 불필요하다.
+명령 실행 전 프롬프트 경로를 한 번 확인할 것.
+```
+
+## PowerShell 인코딩 UTF-8로 설정
+```powershell
+chcp 65001
+```
+
+VS Code 내장 터미널을 쓰면 cd 가 불필요하다.
+명령 실행 전 프롬프트 경로를 한 번 확인할 것.
 ```

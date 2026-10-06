@@ -83,6 +83,7 @@ def filter_existing(conn, df: pd.DataFrame, table: str) -> pd.DataFrame:
     mask = df[keys].astype(str).apply(lambda r: tuple(r) in existing_set, axis=1)
     return df[~mask]
 
+
 def copy_df(conn, df: pd.DataFrame, table: str) -> int:
     """COPY로 대량 적재한다."""
     if df.empty:
@@ -187,7 +188,6 @@ def daily_load(engine, batch_date: date) -> dict[str, int]:
 
 
 def main() -> None:
-    print(f"[실행 파일] {__file__}")
     parser = argparse.ArgumentParser()
     parser.add_argument("target", choices=["dev", "main"])
     parser.add_argument("--date", type=date.fromisoformat, default=date.today())

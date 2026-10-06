@@ -163,3 +163,53 @@
      검사 결과 → mart.dq_daily
 2. load.py 가 clean/ 을 읽도록 경로 변경
 3. 파이프라인 순서: replay → validate → load
+
+## Day 3 (2026-09-29)
+
+### 한 일
+- replay.py / validate.py / load.py 작성 및 파이프라인 관통
+- 검증 룰 9종 구현 (C03/C05, X01~X06, D01/D02/D05/D08)
+- 1일차·2일차 적재 성공
+  - raw.orders 772행, clickstream 7,220행
+  - quarantine.rejected_rows 109행, mart.dq_daily 72행
+
+### 검증 결과 (기준선 확보)
+| 룰 | 대상 | 1일차 | 2일차 |
+|---|---|---|---|
+| X01 | orders.customer_id | 7 (1.7%) | 6 (1.6%) |
+| X03 | support_tickets.customer_id | 1 (2.5%) | 3 (7.9%) |
+| X04 | clickstream.customer_id | 14 (0.8%) | 78 (1.4%) |
+
+- 세 테이블 모두 1~2%대 고아행. "가입 전 활동"이 데이터셋 전반에 존재
+- D08이 2일차 support_tickets에서 발동 (7.9% > 임계 3%).
+  38건 규모에서 1건 차이가 2.6%p를 움직임
+  → **소규모 테이블은 비율 대신 절대 건수 기준을 검토할 것**
+
+### 막힌 것
+- 시행착오 6건 (02_decision_log 참조)
+- 파이썬 컴파일 캐시로 수정이 반영되지 않는 문제 → `-B` 옵션 상시 사용
+- 탭/공백 혼용으로 IndentationError 반복 → VS Code 들여쓰기 설정 고정
+
+### 다음 할 일
+1. aggregate.py — mart.daily_kpi 집계
+2. batch_log 기록 (현재 0행)
+3. D05 기준선 조정 (clickstream 첫날 1,822 vs 기준 5,400)
+
+## Day 4 | subprocess 호출 시 인코딩 문제
+- 증상: run_batch.py 로 호출하면 UnicodeEncodeError('cp949').
+  직접 실행할 때는 정상
+- 원인: 출력이 파이프로 넘어갈 때 윈도우 기본 인코딩(cp949)이 적용됨.
+  em dash(—)와 한글이 cp949 로 변환되지 않음
+- 조치: subprocess 에 PYTHONIOENCODING=utf-8 환경변수 전달
+- 함께 처리: PYTHONDONTWRITEBYTECODE=1 로 캐시 문제도 차단
+- 배운 것: 터미널에서 직접 실행할 때와 파이프로 호출할 때 환경이 다르다.
+  GitHub Actions(리눅스)에서는 기본이 UTF-8 이라 이 문제가 없지만,
+  로컬 개발 환경과의 차이를 인지해야 한다
+
+## Day 4 | Neon dev 브랜치 단일화
+- dev 브랜치가 두 차례 소실 (무료 플랜 비기본 브랜치)
+- 판단: dev/main 분리를 중단하고 단일 환경으로 운영
+- 근거: 모든 데이터가 Parquet 에서 재생성 가능하고 초기화에 10초 소요.
+  이 규모에서 환경 분리의 실익이 관리 비용보다 작다
+- .env 의 DEV_DATABASE_URL 을 main 과 동일하게 설정.
+  스크립트는 그대로 두어 나중에 분리가 필요하면 주소만 바꾸면 된다
