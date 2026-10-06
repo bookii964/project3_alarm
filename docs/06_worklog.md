@@ -213,3 +213,52 @@
   이 규모에서 환경 분리의 실익이 관리 비용보다 작다
 - .env 의 DEV_DATABASE_URL 을 main 과 동일하게 설정.
   스크립트는 그대로 두어 나중에 분리가 필요하면 주소만 바꾸면 된다
+
+  ## Day 4-5 (2026-09-29 ~ 30)
+
+### 한 일
+- run_batch.py: replay → validate → load → aggregate 를 한 줄로 실행,
+  각 단계를 mart.batch_log 에 기록 (RUNNING → SUCCESS/FAILED)
+- aggregate.py + sql/marts/10_daily_kpi.sql: 일별 KPI 집계
+- 5일치 배치 실행 완료
+
+### 현재 상태
+| 테이블 | 행수 |
+|---|---|
+| raw.orders | 1,973 |
+| raw.clickstream | 23,757 |
+| raw.support_tickets | 179 |
+| quarantine.rejected_rows | 339 |
+| mart.dq_daily | 180 |
+| mart.daily_kpi | 5 |
+| mart.batch_log | 16 |
+
+### 5일치 KPI
+| 날짜 | 주문 | GMV | AOV | 금액결측 | 티켓 | 부정비율 |
+|---|---|---|---|---|---|---|
+| 9/28 | 404 | 13.3M | 52,860 | 17.6% | 39 | 25.6% |
+| 9/29 | 368 | 15.4M | 66,752 | 14.4% | 35 | 25.7% |
+| 9/30 | 398 | 14.4M | 53,628 | 13.3% | 45 | 35.6% |
+| 10/1 | 393 | 11.6M | 50,391 | 19.1% | 25 | 44.0% |
+| 10/2 | 410 | 12.7M | 50,100 | 18.1% | 35 | 37.1% |
+
+관찰:
+- X01(orders 고아행)이 6~10건으로 안정적 → **기준선 확보**
+- 9/29 AOV 66,752는 다른 날의 1.3배. 주문 수는 최저(368)인데 GMV 최고
+  → 고액 주문 소수가 평균을 끌어올린 것으로 보임
+- 부정 비율이 25% → 44% 로 상승. 티켓이 25~45건 규모라
+  흔들림일 수 있으나 추세라면 주목 필요
+- 금액 결측률 13~19%. 기준선 17.2% 대비 D01 임계(±10%p) 안이라 경고 없음
+
+### 막힌 것
+- aggregate.py 가 SQL 을 세미콜론으로 나눌 때 주석 블록에 DELETE 문장이
+  묻혀 사라짐 → PK 중복 발생. 주석 줄을 먼저 제거하도록 수정,
+  문장이 2개 미만이면 실패하는 방어장치 추가
+- run_batch.py 의 subprocess 인코딩 (cp949) → PYTHONIOENCODING=utf-8
+- 여러 줄 커밋 메시지가 PowerShell 에서 깨짐 → -m 한 줄 또는 -m 반복 사용
+
+### 다음 할 일
+1. 시나리오 주입기 (config/scenarios.yml) — 품질 오염 재현
+2. alert.py — Slack 발송
+3. baseline.yml 조정: crm_customer_devices row_count 11 → 18
+   (고객 1명이 기기 2대 이상 보유하는 경우 반영)

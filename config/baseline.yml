@@ -41,7 +41,7 @@ crm_customers:
     source: [referral, web, app]
 
 crm_customer_devices:
-  row_count: 11
+  row_count: 15
   null_rate: {}
   categories: {}
 

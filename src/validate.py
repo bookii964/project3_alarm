@@ -162,11 +162,19 @@ def validate(batch: dict[str, pd.DataFrame], refs: dict[str, set],
             res.check(table, "D01", "null_rate", round(actual, 4), expected,
                       tol, "WARN" if over else "PASS", column=col)
 
-        # --- D02: 범주형 신규 값 → 경고 ---
+        # --- D02: 범주형 신규 값 → 격리 ---
+        # 경고로만 두면 DB CHECK 제약에 걸려 배치 전체가 실패한다.
+        # 격리해야 나머지 행이 정상 적재되고 파이프라인이 살아남는다.
         for col, allowed in base.get("categories", {}).items():
             if col not in df.columns:
                 continue
-            new = set(df[col].dropna().astype(str).unique()) - set(allowed)
+            bad_mask = df[col].notna() & ~df[col].astype(str).isin(allowed)
+            new = set(df.loc[bad_mask, col].astype(str).unique())
+            if bad_mask.any():
+                res.reject(table, "D02",
+                           f"{col} 에 허용되지 않은 값: {sorted(new)[:5]}",
+                           df[bad_mask])
+                drop_mask |= bad_mask
             res.check(table, "D02", "new_values", len(new), 0,
                       status="FAIL" if new else "PASS", column=col)
 

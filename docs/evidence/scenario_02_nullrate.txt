@@ -1,0 +1,85 @@
+====================================================
+배치 시작  dev  2026-10-06
+====================================================
+
+--- replay ---
+배치 날짜   2026-10-06
+재생 위치   1회차 9/92일차
+논리 날짜   2025-09-10
+
+[시나리오] 1건 적용
+  - orders.order_amount (null_out)
+
+  orders                    299 + NULL   128 =    427행  (결측률 30.0%)
+    [주입] order_amount 결측 85행 추가
+  support_tickets            34 + NULL     3 =     37행  (결측률 8.1%)
+  clickstream             4,854 + NULL   662 =  5,516행  (결측률 12.0%)
+  crm_customers              15행
+  crm_customer_devices       17행
+
+합계 6,012행
+→ C:\Users\SAMSUNG\Desktop\project\project_3\data\batch
+  → replay 완료  6,012행  5.6초
+
+--- validate ---
+대상: dev   배치 날짜: 2026-10-06
+
+[참조 대상 로드]
+  참조 crm_customers            47,322건
+  참조 product_catalog             500건
+
+[검증]
+  crm_customers               15 →      15행  (격리 0)
+  crm_customer_devices        17 →      17행  (격리 0)
+  orders                     427 →     417행  (격리 10)
+  support_tickets             37 →      37행  (격리 0)
+  clickstream              5,516 →   5,439행  (격리 77)
+
+검사 36건, 격리 87행
+
+[주의]
+  WARN D05 crm_customer_devices — row_count=17 (기준 11)
+  FAIL X01 orders.customer_id — orphan_count=10 (기준 0)
+  WARN D01 orders.order_amount — null_rate=0.3396 (기준 0.172)
+  FAIL X04 clickstream.customer_id — orphan_count=77 (기준 0)
+  → validate 완료  36행  10.2초
+
+--- load ---
+대상: dev   배치 날짜: 2026-10-06
+
+[초기 적재]  batch_date=2026-10-05
+  product_catalog        이미 500행 — 건너뜀
+  crm_customers          이미 47,307행 — 건너뜀
+  crm_customer_devices   이미 50,894행 — 건너뜀
+
+[일별 적재]
+  crm_customers                15행    0.2초
+  crm_customer_devices         17행    0.2초
+  orders                      417행    0.6초
+  support_tickets              37행    0.2초
+  clickstream               5,439행    1.9초
+
+합계 5,925행  9.4초
+  → load 완료  5,925행  13.8초
+
+--- aggregate ---
+대상: dev   배치 날짜: 2026-10-06
+
+[거래]
+  주문 건수               417
+  GMV              13,645,552
+  AOV                  64,671
+  금액 결측률           34.5%  (GMV 는 나머지 65.5% 기준)
+
+[CS]
+  티켓 건수                37
+  부정 비율             37.8%
+  평균 해결시간         125.0h
+
+[행동]
+  이벤트 건수           5,439
+  → aggregate 완료  1행  5.7초
+
+====================================================
+배치 완료  총 37.5초
+====================================================

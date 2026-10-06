@@ -1,0 +1,39 @@
+# 품질 오염 시나리오
+#
+# 재생된 데이터에 의도적으로 오염을 주입해 검증 룰이 작동하는지 확인한다.
+# 지정 날짜가 아닌 날은 원본 그대로이므로 KPI와 기준선이 유지되고,
+# 지정한 날짜에만 이상이 발생한다.
+#
+# 원본 parquet 은 변경하지 않는다. 이번 배치 사본에만 적용한다.
+
+scenarios:
+  - date: 2026-10-05
+    table: orders
+    type: inject_category
+    column: payment_method
+    value: bitcoin
+    count: 3
+    note: >
+      정규화되지 않은 결제수단 유입.
+      원본 정제 시 표준 4종으로 통일했으나 상류에서 되돌아온 상황.
+      기대: D02 발동(평소 0건), 해당 3건 격리
+
+  - date: 2026-10-06
+    table: orders
+    type: null_out
+    column: order_amount
+    rate: 0.20
+    flag_column: amount_flag
+    flag_value: 주입_상류결측
+    note: >
+      금액 결측률 급증. 기존 결측 17%에 20%를 추가해 약 34%.
+      ck_orders_amount_flag 제약을 지키기 위해 flag 도 함께 채운다.
+      기대: D01 발동(기준 17.2%, 임계 ±10%p), GMV 모수 급감
+
+  - date: 2026-10-07
+    table: clickstream
+    type: shrink
+    rate: 0.10
+    note: >
+      상류 수집 장애로 적재량의 10%만 도착.
+      기대: D05 발동(기준 5,400 대비 -90%), KPI 이벤트 수 급감

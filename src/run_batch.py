@@ -2,7 +2,7 @@ r"""
 배치 실행기: 파이프라인 단계를 순서대로 실행하고 이력을 기록한다.
 
 하는 일
-  1. replay → validate → load 를 차례로 호출
+  1. replay → validate → load → aggregate 를 차례로 호출
   2. 각 단계의 시작/종료/건수/소요시간을 mart.batch_log 에 기록
   3. 실패하면 그 지점에서 멈추고 종료 코드 1 을 반환
 
@@ -13,7 +13,8 @@ replay.py 는 DB를 알 필요가 없는 순수 파일 처리이므로
 사용:
     python -B src/run_batch.py dev
     python -B src/run_batch.py dev --date 2026-10-01
-    python -B src/run_batch.py main --init      # 초기 적재부터
+    python -B src/run_batch.py main --init                 # 초기 적재부터
+    python -B src/run_batch.py dev --log docs/evidence/batch.txt
 """
 import argparse
 import os
@@ -27,6 +28,11 @@ import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
 
+# 출력을 파일로 리다이렉트하면 윈도우 기본 인코딩(cp949)이 적용되어
+# em dash(—)와 한글이 깨진다. 자기 출력 스트림도 UTF-8 로 고정한다.
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
@@ -35,6 +41,21 @@ TARGETS = {"dev": "DEV_DATABASE_URL", "main": "DATABASE_URL"}
 
 RAW_TABLES = ["crm_customers", "crm_customer_devices", "orders",
               "support_tickets", "clickstream"]
+
+
+class Tee:
+    """터미널과 파일에 동시에 출력한다."""
+
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, data):
+        for s in self.streams:
+            s.write(data)
+
+    def flush(self):
+        for s in self.streams:
+            s.flush()
 
 
 def log_step(engine, batch_date: date, step: str, status: str,
@@ -59,7 +80,6 @@ def count_batch_files() -> int:
     """replay 가 만든 parquet 의 행 수 합계.
 
     parquet 은 헤더에 행 수를 기록하므로 데이터를 읽지 않고도 알 수 있다.
-    (columns=[] 로 읽으면 컬럼이 없어 행 수가 0으로 나온다)
     """
     import pyarrow.parquet as pq
 
@@ -116,76 +136,85 @@ def run(cmd: list[str]) -> tuple[bool, str]:
     return proc.returncode == 0, msg
 
 
-def count_kpi(engine, batch_date: date) -> int:
-    with engine.connect() as conn:
-        return conn.execute(text(
-            "SELECT count(*) FROM mart.daily_kpi WHERE batch_date = :d"),
-            {"d": batch_date}).scalar()
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("target", choices=["dev", "main"])
     parser.add_argument("--date", type=date.fromisoformat, default=date.today())
     parser.add_argument("--init", action="store_true",
                         help="초기 적재를 먼저 수행한다 (최초 1회)")
+    parser.add_argument("--log", type=Path, default=None,
+                        help="실행 로그를 이 파일에 UTF-8 로 저장한다")
     args = parser.parse_args()
 
-    engine = create_engine(os.environ[TARGETS[args.target]])
-    bd = args.date
-    py = sys.executable
+    log_file = None
+    if args.log:
+        # PowerShell 의 > 리다이렉트는 UTF-8 출력을 중간에서 재인코딩해
+        # 파일을 손상시킨다. 파이썬이 직접 파일에 쓰도록 한다.
+        args.log.parent.mkdir(parents=True, exist_ok=True)
+        log_file = open(args.log, "w", encoding="utf-8")
+        sys.stdout = Tee(sys.stdout, log_file)
 
-    print(f"{'=' * 52}")
-    print(f"배치 시작  {args.target}  {bd}")
-    print(f"{'=' * 52}\n")
+    try:
+        engine = create_engine(os.environ[TARGETS[args.target]])
+        bd = args.date
+        py = sys.executable
 
-    overall = time.time()
+        print("=" * 52)
+        print(f"배치 시작  {args.target}  {bd}")
+        print("=" * 52 + "\n")
 
-    if args.init:
-        print("--- init ---")
-        ok, msg = run([py, "-B", str(ROOT / "src" / "load.py"),
-                       args.target, "--date", bd.isoformat(), "--init-only"])
-        if not ok:
-            print("\n초기 적재 실패")
-            raise SystemExit(1)
+        overall = time.time()
 
-    steps = [
-        ("replay", [py, "-B", str(ROOT / "src" / "replay.py"),
-                    "--date", bd.isoformat()],
-         lambda: count_batch_files()),
-        ("validate", [py, "-B", str(ROOT / "src" / "validate.py"),
+        if args.init:
+            print("--- init ---")
+            ok, _ = run([py, "-B", str(ROOT / "src" / "load.py"),
+                         args.target, "--date", bd.isoformat(), "--init-only"])
+            if not ok:
+                print("\n초기 적재 실패")
+                raise SystemExit(1)
+
+        steps = [
+            ("replay", [py, "-B", str(ROOT / "src" / "replay.py"),
+                        "--date", bd.isoformat()],
+             lambda: count_batch_files()),
+            ("validate", [py, "-B", str(ROOT / "src" / "validate.py"),
+                          args.target, "--date", bd.isoformat()],
+             lambda: count_checks(engine, bd)),
+            ("load", [py, "-B", str(ROOT / "src" / "load.py"),
                       args.target, "--date", bd.isoformat()],
-         lambda: count_checks(engine, bd)),
-        ("load", [py, "-B", str(ROOT / "src" / "load.py"),
-                  args.target, "--date", bd.isoformat()],
-         lambda: count_loaded(engine, bd)),
-        ("aggregate", [py, "-B", str(ROOT / "src" / "aggregate.py"),
-                  args.target, "--date", bd.isoformat()],
-         lambda: count_kpi(engine, bd)),
-    ]
+             lambda: count_loaded(engine, bd)),
+            ("aggregate", [py, "-B", str(ROOT / "src" / "aggregate.py"),
+                           args.target, "--date", bd.isoformat()],
+             lambda: count_kpi(engine, bd)),
+        ]
 
-    for step, cmd, counter in steps:
-        print(f"--- {step} ---")
-        started = datetime.now(timezone.utc)
-        t0 = time.time()
-        log_step(engine, bd, step, "RUNNING", started_at=started)
+        for step, cmd, counter in steps:
+            print(f"--- {step} ---")
+            started = datetime.now(timezone.utc)
+            t0 = time.time()
+            log_step(engine, bd, step, "RUNNING", started_at=started)
 
-        ok, msg = run(cmd)
-        elapsed = time.time() - t0
+            ok, msg = run(cmd)
+            elapsed = time.time() - t0
 
-        if not ok:
-            log_step(engine, bd, step, "FAILED", None, elapsed, msg, started)
-            print(f"\n{step} 실패 ({elapsed:.1f}초)")
-            print(f"배치 중단. 소요 {time.time() - overall:.1f}초")
-            raise SystemExit(1)
+            if not ok:
+                log_step(engine, bd, step, "FAILED", None, elapsed, msg, started)
+                print(f"\n{step} 실패 ({elapsed:.1f}초)")
+                print(f"배치 중단. 소요 {time.time() - overall:.1f}초")
+                raise SystemExit(1)
 
-        n = counter()
-        log_step(engine, bd, step, "SUCCESS", n, elapsed, None, started)
-        print(f"  → {step} 완료  {n:,d}행  {elapsed:.1f}초\n")
+            n = counter()
+            log_step(engine, bd, step, "SUCCESS", n, elapsed, None, started)
+            print(f"  → {step} 완료  {n:,d}행  {elapsed:.1f}초\n")
 
-    print(f"{'=' * 52}")
-    print(f"배치 완료  총 {time.time() - overall:.1f}초")
-    print(f"{'=' * 52}")
+        print("=" * 52)
+        print(f"배치 완료  총 {time.time() - overall:.1f}초")
+        print("=" * 52)
+
+    finally:
+        if log_file:
+            sys.stdout = sys.__stdout__
+            log_file.close()
 
 
 if __name__ == "__main__":
