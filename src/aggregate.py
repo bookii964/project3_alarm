@@ -25,6 +25,19 @@ SQL_FILE = ROOT / "sql" / "marts" / "10_daily_kpi.sql"
 TARGETS = {"dev": "DEV_DATABASE_URL", "main": "DATABASE_URL"}
 
 
+def split_statements(sql: str) -> list[str]:
+    """SQL 파일을 실행 가능한 문장 목록으로 나눈다.
+
+    주석 줄을 먼저 제거한 뒤 세미콜론으로 나눈다.
+    주석을 남겨두고 나누면, 파일 상단의 긴 주석 블록에
+    DELETE 문장이 묻혀 사라진다 (실제로 겪은 버그).
+    """
+    lines = [ln for ln in sql.splitlines()
+             if not ln.strip().startswith("--")]
+    body = "\n".join(lines)
+    return [s.strip() for s in body.split(";") if s.strip()]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("target", choices=["dev", "main"])
@@ -35,15 +48,17 @@ def main() -> None:
     bd = args.date
     print(f"대상: {args.target}   배치 날짜: {bd}\n")
 
-    sql = SQL_FILE.read_text(encoding="utf-8")
+    statements = split_statements(SQL_FILE.read_text(encoding="utf-8"))
+    if len(statements) < 2:
+        raise SystemExit(
+            f"SQL 문장이 {len(statements)}개뿐입니다. "
+            f"DELETE 와 INSERT 가 모두 있어야 합니다.")
 
     with engine.begin() as conn:
         # DELETE + INSERT 를 한 트랜잭션으로 묶어 멱등성을 보장한다
-        for stmt in [s.strip() for s in sql.split(";") if s.strip()
-                     and not s.strip().startswith("--")]:
+        for stmt in statements:
             conn.execute(text(stmt), {"d": bd})
 
-    # 결과 확인
     df = pd.read_sql(
         "SELECT * FROM mart.daily_kpi WHERE batch_date = %(d)s",
         engine, params={"d": bd})
