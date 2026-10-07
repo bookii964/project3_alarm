@@ -41,10 +41,16 @@ crm_customers:
     source: [referral, web, app]
 
 crm_customer_devices:
-  row_count: 15
+  row_count: 15     # 11 → 15. 고객 1명이 기기 2대 이상 보유하는 경우 반영
   null_rate: {}
   categories: {}
 
 tolerance:
-  null_rate_pp: 0.10      # 기준선 대비 ±10%p
-  row_count_ratio: 0.50   # 기준선 대비 ±50%
+  null_rate_pp: 0.10          # 기준선 대비 ±10%p
+  row_count_ratio: 0.50       # 기준선 대비 ±50%
+
+  # 격리율 판정: 비율과 절대 건수를 모두 초과해야 FAIL.
+  # 행 수가 적은 테이블(일 40건 규모)은 1~2건 차이로 비율이
+  # 크게 흔들려 오탐이 발생하므로, 최소 건수 조건을 함께 둔다.
+  quarantine_rate: 0.03
+  quarantine_min_count: 10

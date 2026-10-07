@@ -186,11 +186,17 @@ def validate(batch: dict[str, pd.DataFrame], refs: dict[str, set],
             res.check(table, "D05", "row_count", n0, expected_n, limit,
                       "WARN" if ratio > limit else "PASS")
 
-        # --- D08: 격리 비율 ---
+                # --- D08: 격리 비율 ---
+        # 비율과 절대 건수를 모두 초과해야 FAIL 로 판정한다.
+        # 비율만 쓰면 support_tickets(일 40건)에서 3건만 걸려도 7.5%가 되어
+        # clickstream(5,400건)의 77건(1.4%)보다 심각해 보이는 왜곡이 생긴다.
         n_drop = int(drop_mask.sum())
         rate = n_drop / n0
-        res.check(table, "D08", "quarantine_rate", round(rate, 4), 0.0, 0.03,
-                  "FAIL" if rate > 0.03 else "PASS")
+        tol = BASELINE["tolerance"]
+        over = (rate > tol["quarantine_rate"]
+                and n_drop >= tol.get("quarantine_min_count", 0))
+        res.check(table, "D08", "quarantine_rate", round(rate, 4), 0.0,
+                  tol["quarantine_rate"], "FAIL" if over else "PASS")
 
         clean[table] = df[~drop_mask].copy()
         print(f"  {table:22s} {n0:7,d} → {len(clean[table]):7,d}행  "
@@ -236,6 +242,16 @@ def main() -> None:
 
     batch = {t: pd.read_parquet(BATCH / f"{t}.parquet")
              for t in TABLES if (BATCH / f"{t}.parquet").exists()}
+
+    # data/batch 는 마지막 replay 결과만 담는다.
+    # 다른 날짜의 파일을 검증하는 사고를 막는다.
+    for t, df in batch.items():
+        if "batch_date" in df.columns and len(df):
+            file_date = pd.to_datetime(df["batch_date"].iloc[0]).date()
+            if file_date != batch_date:
+                raise SystemExit(
+                    f"{t}.parquet 의 batch_date 가 {file_date} 입니다. "
+                    f"{batch_date} 를 검증하려면 replay 를 먼저 실행하세요.")
 
     print("[참조 대상 로드]")
     refs = load_ref_ids(engine, batch)

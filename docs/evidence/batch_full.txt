@@ -1,0 +1,86 @@
+====================================================
+배치 시작  dev  2026-10-10
+====================================================
+
+--- replay ---
+배치 날짜   2026-10-10
+재생 위치   1회차 13/92일차
+논리 날짜   2025-09-14
+
+  orders                    264 + NULL   113 =    377행  (결측률 30.0%)
+  support_tickets            39 + NULL     4 =     43행  (결측률 9.3%)
+  clickstream             4,779 + NULL   652 =  5,431행  (결측률 12.0%)
+  crm_customers              13행
+  crm_customer_devices       13행
+
+합계 5,877행
+→ C:\Users\SAMSUNG\Desktop\project\project_3\data\batch
+  → replay 완료  5,877행  5.7초
+
+--- validate ---
+대상: dev   배치 날짜: 2026-10-10
+
+[참조 대상 로드]
+  참조 crm_customers            47,361건
+  참조 product_catalog             500건
+
+[검증]
+  crm_customers               13 →      13행  (격리 0)
+  crm_customer_devices        13 →      13행  (격리 0)
+  orders                     377 →     366행  (격리 11)
+  support_tickets             43 →      41행  (격리 2)
+  clickstream              5,431 →   5,370행  (격리 61)
+
+검사 36건, 격리 74행
+
+[주의]
+  FAIL X01 orders.customer_id — orphan_count=11 (기준 0)
+  FAIL X03 support_tickets.customer_id — orphan_count=2 (기준 0)
+  FAIL X04 clickstream.customer_id — orphan_count=61 (기준 0)
+  → validate 완료  36행  11.1초
+
+--- load ---
+대상: dev   배치 날짜: 2026-10-10
+
+[초기 적재]  batch_date=2026-10-09
+  product_catalog        이미 500행 — 건너뜀
+  crm_customers          이미 47,348행 — 건너뜀
+  crm_customer_devices   이미 50,941행 — 건너뜀
+
+[일별 적재]
+  crm_customers                13행    0.1초
+  crm_customer_devices         13행    0.2초
+  orders                      366행    0.3초
+  support_tickets              41행    0.2초
+  clickstream               5,370행    0.8초
+
+합계 5,803행  6.5초
+  → load 완료  5,803행  10.8초
+
+--- aggregate ---
+대상: dev   배치 날짜: 2026-10-10
+
+[거래]
+  주문 건수               366
+  GMV              11,351,834
+  AOV                  51,366
+  금액 결측률           16.4%  (GMV 는 나머지 83.6% 기준)
+
+[CS]
+  티켓 건수                41
+  부정 비율             34.2%
+  평균 해결시간         138.5h
+
+[행동]
+  이벤트 건수           5,370
+  → aggregate 완료  1행  5.8초
+
+--- alert ---
+대상: dev   배치 날짜: 2026-10-10
+
+알람 없음. 정상입니다.
+  → alert 완료  0행  5.9초
+
+====================================================
+배치 완료  총 42.5초
+====================================================

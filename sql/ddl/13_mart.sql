@@ -45,3 +45,14 @@ CREATE TABLE IF NOT EXISTS mart.batch_log (
     PRIMARY KEY (batch_date, step),
     CONSTRAINT ck_batch_status CHECK (status IN ('RUNNING', 'SUCCESS', 'FAILED', 'SKIPPED'))
 );
+
+CREATE TABLE mart.alert_log (
+    id          bigserial PRIMARY KEY,
+    batch_date  date        NOT NULL,
+    severity    text        NOT NULL,   -- P1 / P2 / P3
+    rule_id     text,
+    table_name  text,
+    message     text        NOT NULL,
+    sent_at     timestamptz NOT NULL DEFAULT now(),
+    channel     text        NOT NULL    -- slack / email
+);

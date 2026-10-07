@@ -2,9 +2,10 @@ r"""
 배치 실행기: 파이프라인 단계를 순서대로 실행하고 이력을 기록한다.
 
 하는 일
-  1. replay → validate → load → aggregate 를 차례로 호출
+  1. replay → validate → load → aggregate → alert 를 차례로 호출
   2. 각 단계의 시작/종료/건수/소요시간을 mart.batch_log 에 기록
   3. 실패하면 그 지점에서 멈추고 종료 코드 1 을 반환
+     (단, alert 실패는 배치를 중단시키지 않는다)
 
 스크립트들을 수정하지 않고 subprocess 로 호출한다.
 replay.py 는 DB를 알 필요가 없는 순수 파일 처리이므로
@@ -13,7 +14,7 @@ replay.py 는 DB를 알 필요가 없는 순수 파일 처리이므로
 사용:
     python -B src/run_batch.py dev
     python -B src/run_batch.py dev --date 2026-10-01
-    python -B src/run_batch.py main --init                 # 초기 적재부터
+    python -B src/run_batch.py main --init
     python -B src/run_batch.py dev --log docs/evidence/batch.txt
 """
 import argparse
@@ -41,6 +42,11 @@ TARGETS = {"dev": "DEV_DATABASE_URL", "main": "DATABASE_URL"}
 
 RAW_TABLES = ["crm_customers", "crm_customer_devices", "orders",
               "support_tickets", "clickstream"]
+
+# 실패해도 배치를 중단시키지 않는 단계.
+# 데이터는 이미 적재됐는데 발송 실패로 전체를 FAILED 로 표시하면
+# 다음 날 P1 알람이 오탐으로 울린다.
+NON_FATAL = {"alert"}
 
 
 class Tee:
@@ -110,6 +116,13 @@ def count_kpi(engine, batch_date: date) -> int:
     with engine.connect() as conn:
         return conn.execute(text(
             "SELECT count(*) FROM mart.daily_kpi WHERE batch_date = :d"),
+            {"d": batch_date}).scalar()
+
+
+def count_alerts(engine, batch_date: date) -> int:
+    with engine.connect() as conn:
+        return conn.execute(text(
+            "SELECT count(*) FROM mart.alert_log WHERE batch_date = :d"),
             {"d": batch_date}).scalar()
 
 
@@ -186,6 +199,9 @@ def main() -> None:
             ("aggregate", [py, "-B", str(ROOT / "src" / "aggregate.py"),
                            args.target, "--date", bd.isoformat()],
              lambda: count_kpi(engine, bd)),
+            ("alert", [py, "-B", str(ROOT / "src" / "alert.py"),
+                       args.target, "--date", bd.isoformat()],
+             lambda: count_alerts(engine, bd)),
         ]
 
         for step, cmd, counter in steps:
@@ -199,6 +215,9 @@ def main() -> None:
 
             if not ok:
                 log_step(engine, bd, step, "FAILED", None, elapsed, msg, started)
+                if step in NON_FATAL:
+                    print(f"\n{step} 실패 ({elapsed:.1f}초) — 배치는 계속합니다\n")
+                    continue
                 print(f"\n{step} 실패 ({elapsed:.1f}초)")
                 print(f"배치 중단. 소요 {time.time() - overall:.1f}초")
                 raise SystemExit(1)
