@@ -68,14 +68,6 @@ Git이 제외된 폴더는 아예 들여다보지 않기 때문.
 `python -c "..."` 에 SQL이나 따옴표가 들어가면 PowerShell이 먼저 해석해
 깨진다 (`*`, `'`, `$` 등). 확인용 쿼리도 src/ 에 파일로 만들어 실행할 것.
 
-## Day 3 | 날짜 체계 정리
-- 세 종류의 날짜가 공존한다:
-  - 작업일: 실제 개발한 날 (worklog 기준)
-  - batch_date: 배치 실행일. 작업일과 동일하며 raw/mart의 파티션 키
-  - 논리 날짜: 원본 이벤트 날짜(2025-09-02~12-02). 재생기가 자동 계산
-- CLI 인자 `--date` 는 batch_date 를 받는다 (논리 날짜 아님)
-- 대시보드 축: 품질 지표는 batch_date, 매출 추이는 order_date 기준
-
 ## Neon 브랜치
 
 | 브랜치 | 용도 | 엔드포인트 |
@@ -140,3 +132,22 @@ chcp 65001
 VS Code 내장 터미널을 쓰면 cd 가 불필요하다.
 명령 실행 전 프롬프트 경로를 한 번 확인할 것.
 ```
+
+## 폴더를 옮겼을 때
+
+`.venv` 안의 실행 파일(pip.exe, streamlit.exe 등)은 생성 당시의
+절대 경로를 내장하고 있어 폴더 이동을 따라가지 못한다.
+
+증상: `Fatal error in launcher: Unable to create process using ...`
+      (에러에 찍힌 경로가 옛날 위치)
+
+해결: 가상환경을 다시 만든다.
+```powershell
+deactivate
+Remove-Item -Recurse -Force .venv
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+이것이 requirements.txt 를 유지해야 하는 이유다.
