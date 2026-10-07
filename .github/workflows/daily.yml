@@ -24,6 +24,8 @@ jobs:
   batch:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write      # 자동 커밋을 위해 필요
 
     env:
       TZ: Asia/Seoul
@@ -53,6 +55,7 @@ jobs:
 
       - name: 배치 실행
         run: |
+          echo "러너 시각: $(date '+%Y-%m-%d %H:%M %Z')"
           DATE="${{ inputs.date }}"
           if [ -z "$DATE" ]; then DATE=$(date +%F); fi
           echo "배치 날짜: $DATE"
@@ -66,3 +69,19 @@ jobs:
           name: batch-log-${{ github.run_number }}
           path: docs/evidence/actions_*.txt
           retention-days: 30
+
+      - name: 활동 기록 (60일 비활성화 방지)
+        # GitHub 은 레포에 60일간 활동이 없으면 예약 워크플로를 자동 중단한다.
+        # 월요일마다 실행 이력을 커밋해 활동을 남긴다.
+        if: github.event_name == 'schedule'
+        run: |
+          if [ "$(date +%u)" != "1" ]; then exit 0; fi
+          mkdir -p docs/evidence
+          echo "마지막 자동 실행: $(date '+%Y-%m-%d %H:%M %Z')" > docs/last_run.md
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/last_run.md
+          git commit -m "chore: 자동 실행 기록 $(date +%F)" || exit 0
+          git push
+
+      

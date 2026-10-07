@@ -186,7 +186,7 @@ def validate(batch: dict[str, pd.DataFrame], refs: dict[str, set],
             res.check(table, "D05", "row_count", n0, expected_n, limit,
                       "WARN" if ratio > limit else "PASS")
 
-                # --- D08: 격리 비율 ---
+        # --- D08: 격리 비율 ---
         # 비율과 절대 건수를 모두 초과해야 FAIL 로 판정한다.
         # 비율만 쓰면 support_tickets(일 40건)에서 3건만 걸려도 7.5%가 되어
         # clickstream(5,400건)의 77건(1.4%)보다 심각해 보이는 왜곡이 생긴다.
