@@ -34,14 +34,15 @@ clickstream:
     page_type: [product_detail, search, category, cart, home, other]
 
 crm_customers:
-  row_count: 11
+  # row_count 를 두지 않는다.
+  # 신규 가입자는 일 6~17명으로 자연 변동폭이 크고, 이 규모에서
+  # ±50% 비율 기준은 의미가 없다. 적재 0건은 C05 가 잡는다.
   null_rate: {}
   categories:
     gender: [M, F, O]
     source: [referral, web, app]
 
 crm_customer_devices:
-  row_count: 15     # 11 → 15. 고객 1명이 기기 2대 이상 보유하는 경우 반영
   null_rate: {}
   categories: {}
 

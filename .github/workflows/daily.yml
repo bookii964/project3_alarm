@@ -1,0 +1,68 @@
+# 일별 배치 자동 실행
+#
+# 한국시각 07:00 = UTC 22:00(전날). cron 은 UTC 기준이다.
+#
+# 주의: GitHub Actions 의 예약 실행은 러너 혼잡 시 수십 분 지연될 수 있다.
+# 정확한 시각 보장이 필요하면 전용 스케줄러(Airflow 등)가 필요하다.
+#
+# 원본 Parquet(64MB)은 레포에 커밋하지 않고 Release 로 분리했다.
+# 매 실행마다 내려받아 복원한다.
+
+name: daily batch
+
+on:
+  schedule:
+    - cron: '0 22 * * *'      # KST 07:00
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '배치 날짜 (YYYY-MM-DD). 비우면 오늘'
+        required: false
+        type: string
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      TZ: Asia/Seoul
+      PYTHONDONTWRITEBYTECODE: '1'
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DEV_DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+
+      - name: 의존성 설치
+        run: pip install -r requirements.txt
+
+      - name: 원본 데이터 복원
+        run: |
+          mkdir -p data/source
+          curl -sSL -o source.zip \
+            "https://github.com/${{ github.repository }}/releases/download/data-v1/source.zip"
+          unzip -q source.zip -d data/source
+          ls -lh data/source
+
+      - name: 배치 실행
+        run: |
+          DATE="${{ inputs.date }}"
+          if [ -z "$DATE" ]; then DATE=$(date +%F); fi
+          echo "배치 날짜: $DATE"
+          python -B src/run_batch.py main --date "$DATE" \
+            --log "docs/evidence/actions_${DATE}.txt"
+
+      - name: 실행 로그 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-log-${{ github.run_number }}
+          path: docs/evidence/actions_*.txt
+          retention-days: 30
