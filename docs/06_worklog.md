@@ -164,7 +164,13 @@
 2. load.py 가 clean/ 을 읽도록 경로 변경
 3. 파이프라인 순서: replay → validate → load
 
-## Day 3 (2026-09-29)
+## Day 3 | 날짜 체계 정리
+- 세 종류의 날짜가 공존한다:
+  - 작업일: 실제 개발한 날 (worklog 기준)
+  - batch_date: 배치 실행일. 작업일과 동일하며 raw/mart의 파티션 키
+  - 논리 날짜: 원본 이벤트 날짜(2025-09-02~12-02). 재생기가 자동 계산
+- CLI 인자 `--date` 는 batch_date 를 받는다 (논리 날짜 아님)
+- 대시보드 축: 품질 지표는 batch_date, 매출 추이는 order_date 기준
 
 ### 한 일
 - replay.py / validate.py / load.py 작성 및 파이프라인 관통
