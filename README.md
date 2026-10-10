@@ -1,3 +1,11 @@
+**[대시보드 보기](https://project3-dq-dashboard.streamlit.app/)** · 매일 한국시각 07:00 자동 실행 · [실행 이력](../../actions)
+> 대시보드는 무료 호스팅이라 접속이 없으면 절전 상태가 됩니다.
+> 첫 로딩에 30초 정도 걸릴 수 있습니다.
+
+![대시보드](docs/evidence/dashboard_quality.png)
+![대시보드](docs/evidence/dashboard_kpi.png)
+![대시보드](docs/evidence/dashboard_batch.png)
+
 # 데이터 품질 모니터링 파이프라인
 
 매일 도착하는 이커머스 데이터를 검증하고, 품질 지표를 시계열로 축적하며,

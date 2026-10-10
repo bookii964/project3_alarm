@@ -48,13 +48,23 @@ def get_engine():
                  ".env 또는 Streamlit secrets 를 확인하세요.")
         st.stop()
 
-    return create_engine(url, pool_pre_ping=True)
-
+    try:
+        return create_engine(url, pool_pre_ping=True)
+    except Exception:
+        # 퍼블릭 앱이므로 에러 상세를 노출하지 않는다.
+        # SQLAlchemy 는 연결 실패 시 접속 문자열을 메시지에 담는다
+        st.error("데이터베이스 연결에 실패했습니다.")
+        st.stop()
 
 @st.cache_data(ttl=300)
 def q(sql: str) -> pd.DataFrame:
     """쿼리 결과를 5분간 캐시한다. Neon 컴퓨트 사용량을 줄이기 위함."""
-    return pd.read_sql(sql, get_engine())
+    try:
+        return pd.read_sql(sql, get_engine())
+    except Exception as e:
+        # 퍼블릭 앱이므로 에러 유형만 표시하고 상세는 감춘다
+        st.error(f"조회 실패: {type(e).__name__}")
+        st.stop()
 
 
 @st.cache_data
