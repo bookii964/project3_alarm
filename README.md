@@ -1,6 +1,6 @@
 **[대시보드 보기](https://project3-dq-dashboard.streamlit.app/)** · 매일 한국시각 07:00 자동 실행 · [실행 이력](../../actions)
-> 대시보드는 무료 호스팅이라 접속이 없으면 절전 상태가 됩니다.
-> 첫 로딩에 30초 정도 걸릴 수 있습니다.
+> 무료 호스팅이라 접속이 없으면 절전 상태가 됩니다.
+> 보통 5초 내에 열리지만, 오래 접속이 없었다면 30초까지 걸릴 수 있습니다.
 
 ![대시보드](docs/evidence/dashboard_quality.png)
 ![대시보드](docs/evidence/dashboard_kpi.png)
@@ -58,6 +58,10 @@ Parquet (원본, GitHub Release)
 | `mart` | dq_daily / daily_kpi / batch_log / alert_log | PK 위주 |
 
 ---
+
+![품질 대시보드](docs/evidence/dashboard_quality.png)
+주입일(10/05~10/07)에 점선이 표시되고, 결측률 차트에서
+기준선 17.2% 대비 34%로 치솟는 것이 보입니다.
 
 ## 운영 현황
 
@@ -137,6 +141,10 @@ undated 풀의 소비 구간이 겹쳐 중복이 발생했을 때 PK 제약이 �
 떨어지자 AOV가 평소보다 30% 높게 나왔는데, 표본이 줄어 평균이 이동한
 것이지 실제 구매액이 오른 게 아닙니다. 모수 없이 AOV만 봤다면
 오판했을 것입니다.
+
+![KPI 대시보드](docs/evidence/dashboard_kpi.png)
+"GMV 집계 모수" 차트에서 10/06에 65%로 하락하는 구간이
+결측률 주입 시나리오의 결과입니다.
 
 ### 3. 매일 울리는 알람은 알람이 아니다
 
@@ -236,21 +244,25 @@ P1은 억제하지 않습니다. 품질 경고는 하루 한 번이면 충분하
 
 재실행 시 억제가 작동해 중복 발송되지 않았습니다.
 
+![배치 대시보드](docs/evidence/dashboard_batch.png)
+실행 이력 격자의 10/08 공백이 P1 알람(F01)과 연결됩니다
+
+### 알람에 런북을 포함했습니다
+
 ### 알람에 런북을 포함했습니다
 
 담당자가 `D01` 만 보고는 무엇을 해야 할지 알 수 없습니다.
 `config/alerts.yml` 의 `rule_info` 에 의미·추정 원인·조치를 정의하고
 Slack 메시지에 함께 출력합니다.
 
-📊 2026-10-06 배치 알람 (1건)
+![P3 알람](docs/evidence/slack_alert_p3.png)
 
-P3 — 지표 급변
+심각도별로 색상과 이모지가 구분됩니다.
 
-결측률 급변 D01
-orders.order_amount — null_rate=0.3396 (기준 0.172)
-
-특정 컬럼의 NULL 비율이 평소와 크게 달라졌습니다
-추정 원인 상류 필드 누락, 수집 로직 변경, 정제 단계 오류
+| | |
+|---|---|
+| ![P1](docs/evidence/slack_alert_p1.png) | ![P2](docs/evidence/slack_alert_p2.png) |
+| P1 — 배치 장애 | P2 — 품질 이상 |
 조치 해당 컬럼의 _raw 값 확인 → 상류 스키마 변경 여부 문의
 
 
